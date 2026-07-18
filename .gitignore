@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Runtime data and logs
+tmp/
+temp/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+logs/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example

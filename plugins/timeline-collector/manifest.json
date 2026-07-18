@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Twitter Timeline Collector",
+  "version": "0.1.0",
+  "description": "Collects a compact timeline from UserTweets responses already loaded by the current X page.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "offscreen",
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Twitter Timeline"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "timeline-parser.js",
+        "content-script.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-hook.js"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ]
+    }
+  ]
+}

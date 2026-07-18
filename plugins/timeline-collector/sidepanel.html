@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Twitter Timeline Panel</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Twitter Timeline</p>
+          <h1>推文抓取面板</h1>
+        </div>
+        <span id="stateBadge">未就绪</span>
+      </header>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>一次测试抓取</h2>
+          <button id="refreshButton" type="button">刷新结果</button>
+        </div>
+        <p id="collectionTip" class="panel-tip">
+          点击“测试抓取”会刷新当前 X 账号页，然后自动滚动并收集符合条件的推文。
+        </p>
+
+        <label>
+          账号
+          <input id="usernameInput" type="text" placeholder="优先使用当前页面账号">
+        </label>
+
+        <label>
+          起始时间
+          <input id="sinceTimeInput" type="datetime-local">
+        </label>
+
+        <div class="grid single">
+          <label>
+            最多展示推文数
+            <input id="maxTweetsInput" type="number" min="1" max="500" value="100">
+          </label>
+        </div>
+
+        <nav>
+          <button id="testReloadButton" type="button">测试抓取</button>
+          <button id="startButton" type="button">直接开始</button>
+          <button id="stopButton" type="button">停止</button>
+          <button id="clearButton" type="button">清空结果</button>
+        </nav>
+
+        <section class="summary">
+          <div>页面：<span id="pageLabel">-</span></div>
+          <div>捕获次数：<span id="captureCount">0</span></div>
+          <div>结果推文数：<span id="tweetCount">0</span></div>
+          <div>停止原因：<span id="stopReason">-</span></div>
+          <div>滚动次数：<span id="scrollCount">0</span></div>
+          <div>空滚动次数：<span id="idleScrollCount">0</span></div>
+          <div>起始时间：<span id="summarySinceTime">-</span></div>
+          <div>结果上限：<span id="summaryMaxTweets">-</span></div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>抓取结果</h2>
+          <span id="tweetListHint">当前还没有结果</span>
+        </div>
+
+        <section class="summary single result-summary">
+          <div>抓取来源：<span id="lastCaptureSource">-</span></div>
+          <div>最近抓取时间：<span id="lastCaptureAt">-</span></div>
+          <div>Hook 事件：<span id="lastHookDebugEvent">-</span></div>
+          <div>Hook 时间：<span id="lastHookDebugAt">-</span></div>
+        </section>
+
+        <div id="resultModeBanner" class="mode-banner">
+          结果列表会按当前条件展示最终结果集。
+        </div>
+
+        <section class="tweet-list-panel">
+          <div id="tweetList" class="tweet-list empty">当前还没有推文结果</div>
+        </section>
+
+        <details class="raw-panel">
+          <summary>查看原始 JSON</summary>
+          <textarea id="resultOutput" spellcheck="false" readonly></textarea>
+        </details>
+
+        <details class="diagnostics-panel">
+          <summary>查看诊断信息</summary>
+          <div class="diagnostics-body">
+            <div class="section-head">
+              <h3>后台状态</h3>
+              <button id="refreshBridgeButton" type="button">刷新后台</button>
+            </div>
+            <div class="summary single">
+              <div>阶段：<span id="bridgePhase">-</span></div>
+              <div>待执行任务：<span id="pendingJobId">-</span></div>
+              <div>目标账号：<span id="pendingUsername">-</span></div>
+              <div>目标标签页：<span id="pendingTabId">-</span></div>
+              <div>目标 URL：<span id="pendingTargetUrl">-</span></div>
+              <div>服务地址：<span id="serverOrigin">-</span></div>
+            </div>
+
+            <div class="section-head">
+              <h3>扩展日志</h3>
+              <div class="actions">
+                <button id="refreshLogsButton" type="button">刷新日志</button>
+                <button id="clearLogsButton" type="button">清空日志</button>
+              </div>
+            </div>
+            <textarea id="bridgeLogsOutput" spellcheck="false" readonly></textarea>
+          </div>
+        </details>
+      </section>
+    </main>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
