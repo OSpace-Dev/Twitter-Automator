@@ -53,6 +53,19 @@ test("persists targets, settings, scheduled jobs, and daily statistics", () => {
       failedJobs: 0,
       totalTweets: 1
     });
+    assert.equal(store.deleteTarget(target.targetId), true);
+    assert.equal(store.deleteTarget(target.targetId), false);
+    assert.equal(store.getTarget(target.targetId), null);
+    assert.equal(store.listJobs({ runDate: "2026-07-19" }).length, 1);
+    assert.equal(store.listTweets({ jobId: job.jobId }).length, 1);
+    assert.deepEqual(store.getStats("2026-07-19"), {
+      totalTargets: 0,
+      enabledTargets: 0,
+      totalJobs: 1,
+      todayJobs: 1,
+      failedJobs: 0,
+      totalTweets: 1
+    });
   } finally {
     store.close();
     removeDatabase(databasePath);

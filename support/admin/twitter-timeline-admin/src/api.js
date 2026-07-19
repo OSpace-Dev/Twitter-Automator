@@ -41,6 +41,9 @@ export function createApiClient(settings) {
       method: "PUT",
       body: JSON.stringify(input)
     }),
+    deleteTarget: (targetId) => request(`/api/twitter-timeline/targets/${encodeURIComponent(targetId)}`, {
+      method: "DELETE"
+    }),
     runTarget: (targetId) => request(`/api/twitter-timeline/targets/${encodeURIComponent(targetId)}/run`, {
       method: "POST",
       body: "{}"

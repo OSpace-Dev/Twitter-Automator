@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   CalendarClock,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   Plus,
   Save,
   Target,
+  Trash2,
   X
 } from "@lucide/vue";
 import { formatTime } from "../format";
@@ -30,6 +31,8 @@ const targets = ref([]);
 const savingTarget = ref(false);
 const savingSchedule = ref(false);
 const runningTargetId = ref("");
+const deletingTargetId = ref("");
+const targetToDelete = ref(null);
 const targetForm = reactive({
   targetId: "",
   username: "",
@@ -146,6 +149,36 @@ async function runTarget(target) {
   }
 }
 
+function requestTargetDeletion(target) {
+  targetToDelete.value = target;
+}
+
+function closeTargetDeletion() {
+  if (!deletingTargetId.value) targetToDelete.value = null;
+}
+
+async function confirmTargetDeletion() {
+  const target = targetToDelete.value;
+  if (!target) return;
+  deletingTargetId.value = target.targetId;
+  clearFeedback();
+  try {
+    await client.value.deleteTarget(target.targetId);
+    if (targetForm.targetId === target.targetId) resetTargetForm();
+    targetToDelete.value = null;
+    await loadTargetsPage();
+    showNotice(`@${target.username} 已从目标账号中删除，历史数据继续保留`);
+  } catch (cause) {
+    showError(cause);
+  } finally {
+    deletingTargetId.value = "";
+  }
+}
+
+function handleEscape(event) {
+  if (event.key === "Escape" && targetToDelete.value) closeTargetDeletion();
+}
+
 async function saveSchedule() {
   savingSchedule.value = true;
   clearFeedback();
@@ -163,6 +196,8 @@ async function saveSchedule() {
 }
 
 watch(refreshVersion, loadTargetsPage, { immediate: true });
+onMounted(() => window.addEventListener("keydown", handleEscape));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleEscape));
 </script>
 
 <template>
@@ -212,6 +247,7 @@ watch(refreshVersion, loadTargetsPage, { immediate: true });
                   <button class="icon-button small" title="立即运行" aria-label="立即运行" :disabled="runningTargetId === targetItem.targetId" @click="runTarget(targetItem)">
                     <LoaderCircle v-if="runningTargetId === targetItem.targetId" :size="14" class="spinning" /><Play v-else :size="14" />
                   </button>
+                  <button class="icon-button small danger" title="删除目标" :aria-label="`删除 @${targetItem.username}`" @click="requestTargetDeletion(targetItem)"><Trash2 :size="14" /></button>
                 </div>
               </td>
             </tr>
@@ -231,4 +267,25 @@ watch(refreshVersion, loadTargetsPage, { immediate: true });
       <button class="outline-button wide" :disabled="savingSchedule" @click="saveSchedule"><Save :size="15" />{{ savingSchedule ? "保存中" : "保存调度" }}</button>
     </article>
   </section>
+
+  <Teleport to="body">
+    <div v-if="targetToDelete" class="overlay centered" @click.self="closeTargetDeletion">
+      <section class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-target-title" aria-describedby="delete-target-description">
+        <header class="section-heading">
+          <div><p class="eyebrow danger-eyebrow">Delete Target</p><h2 id="delete-target-title">删除 @{{ targetToDelete.username }}？</h2></div>
+          <button class="icon-button" title="关闭" aria-label="关闭删除确认" :disabled="Boolean(deletingTargetId)" @click="closeTargetDeletion"><X :size="17" /></button>
+        </header>
+        <div class="dialog-copy" id="delete-target-description">
+          <p>该账号将不再参与后续每日调度。</p>
+          <p>历史任务和 Tweets 会继续保留，已经排队或正在执行的任务不会被中断。</p>
+        </div>
+        <div class="dialog-actions">
+          <button class="outline-button" :disabled="Boolean(deletingTargetId)" @click="closeTargetDeletion">取消</button>
+          <button class="danger-button" :disabled="Boolean(deletingTargetId)" @click="confirmTargetDeletion">
+            <LoaderCircle v-if="deletingTargetId" :size="15" class="spinning" /><Trash2 v-else :size="15" />{{ deletingTargetId ? "删除中" : "确认删除" }}
+          </button>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 </template>

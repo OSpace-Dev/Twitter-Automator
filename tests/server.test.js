@@ -38,6 +38,19 @@ test("manages targets, runs a collection, and queries daily history", async () =
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
   try {
+    const deletePreflightResponse = await fetch(
+      `${baseUrl}/api/twitter-timeline/targets/example-target`,
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://127.0.0.1:17331",
+          "Access-Control-Request-Method": "DELETE"
+        }
+      }
+    );
+    assert.equal(deletePreflightResponse.status, 204);
+    assert.match(deletePreflightResponse.headers.get("access-control-allow-methods"), /DELETE/);
+
     const createTargetResponse = await fetch(`${baseUrl}/api/twitter-timeline/targets`, {
       method: "POST",
       headers: apiHeaders(),
@@ -137,6 +150,35 @@ test("manages targets, runs a collection, and queries daily history", async () =
       }
     );
     assert.equal((await disableResponse.json()).target.enabled, false);
+
+    const deleteResponse = await fetch(
+      `${baseUrl}/api/twitter-timeline/targets/${createdTarget.targetId}`,
+      { method: "DELETE", headers: apiHeaders() }
+    );
+    assert.equal(deleteResponse.status, 200);
+    assert.equal((await deleteResponse.json()).targetId, createdTarget.targetId);
+
+    const targetsAfterDelete = await fetch(`${baseUrl}/api/twitter-timeline/targets`, {
+      headers: apiHeaders()
+    });
+    assert.equal((await targetsAfterDelete.json()).targets.length, 0);
+
+    const historyAfterDelete = await fetch(
+      `${baseUrl}/api/twitter-timeline/jobs?username=openai`,
+      { headers: apiHeaders() }
+    );
+    assert.equal((await historyAfterDelete.json()).jobs.length, 1);
+    const tweetsAfterDelete = await fetch(
+      `${baseUrl}/api/twitter-timeline/tweets?jobId=${runJob.jobId}`,
+      { headers: apiHeaders() }
+    );
+    assert.equal((await tweetsAfterDelete.json()).tweets.length, 1);
+
+    const repeatedDeleteResponse = await fetch(
+      `${baseUrl}/api/twitter-timeline/targets/${createdTarget.targetId}`,
+      { method: "DELETE", headers: apiHeaders() }
+    );
+    assert.equal(repeatedDeleteResponse.status, 404);
     await collectEvent.reader.cancel();
   } finally {
     await app.close();

@@ -319,6 +319,20 @@ function createApp(options = {}) {
         return sendJson(response, 200, { ok: true, target });
       }
 
+      if (request.method === "DELETE" && targetMatch) {
+        const targetId = decodeURIComponent(targetMatch[1]);
+        const target = store.getTarget(targetId);
+        if (!target) {
+          return sendJson(response, 404, { ok: false, error: "target_not_found" });
+        }
+        store.deleteTarget(targetId);
+        logger.info("target_deleted", {
+          targetId,
+          username: target.username
+        });
+        return sendJson(response, 200, { ok: true, targetId });
+      }
+
       if (pathname === "/api/twitter-timeline/jobs" && request.method === "POST") {
         if (!isAuthorizedBearer(request, appConfig.apiToken)) {
           logger.warn("api_create_job_unauthorized", { pathname });
@@ -889,7 +903,7 @@ function isTerminalStatus(status) {
 function createCorsHeaders() {
   return {
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS"
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS"
   };
 }
 

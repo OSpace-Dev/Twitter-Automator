@@ -162,6 +162,7 @@ class TimelineStore {
       SET username = ?, display_name = ?, max_tweets = ?, enabled = ?, updated_at = ?
       WHERE target_id = ?
     `);
+    this.deleteTargetStatement = this.db.prepare("DELETE FROM targets WHERE target_id = ?");
     this.upsertSettingStatement = this.db.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
@@ -343,6 +344,10 @@ class TimelineStore {
       targetId
     );
     return this.getTarget(targetId);
+  }
+
+  deleteTarget(targetId) {
+    return this.deleteTargetStatement.run(targetId).changes > 0;
   }
 
   getSettings() {

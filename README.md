@@ -104,8 +104,9 @@ Vue Router separates the console into two business modules instead of conditiona
 1. Open **Targets** to add a username, optional display name, and maximum tweet count.
 2. Use the switch to include or exclude the target from daily automation, then save the Asia/Shanghai trigger under **Daily Schedule**.
 3. Use the play button to run one target immediately.
-4. Open **Data History** and filter jobs by date, account, status, or trigger source.
-5. Open a job's detail drawer to read its stored tweets while retaining links to the original posts on X.
+4. Use the delete button to remove a target from future collection. Historical jobs and tweets are retained.
+5. Open **Data History** and filter jobs by date, account, status, or trigger source.
+6. Open a job's detail drawer to read its stored tweets while retaining links to the original posts on X.
 
 ## Local Configuration
 
