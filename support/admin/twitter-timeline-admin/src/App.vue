@@ -67,7 +67,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleEscape));
     <p v-if="error" class="feedback feedback-error"><CircleAlert :size="16" />{{ error }}</p>
     <p v-if="notice" class="feedback"><CheckCircle2 :size="16" />{{ notice }}</p>
 
-    <RouterView />
+    <div class="route-content">
+      <RouterView />
+    </div>
 
     <footer>Twitter Automator <span>·</span> SQLite local data service <span>·</span> {{ getShanghaiDate() }}</footer>
   </main>
