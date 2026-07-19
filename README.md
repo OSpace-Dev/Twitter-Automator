@@ -11,7 +11,7 @@ The service persists target accounts, creates incremental jobs every day in Asia
 ```text
 plugins/timeline-collector/                 Chrome/Edge Manifest V3 extension
 support/api/twitter-timeline/               Node.js API, daily scheduler, SQLite Store
-support/admin/twitter-timeline-admin/       Monochrome Vue operations console
+support/admin/twitter-timeline-admin/       Green and white Vue operations console
 tests/                                      Scheduler, Store, and API integration tests
 ```
 

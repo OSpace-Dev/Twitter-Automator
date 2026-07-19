@@ -11,7 +11,7 @@ Twitter Automator 是一套本地 Twitter/X Timeline 自动采集工具，由 Ma
 ```text
 plugins/timeline-collector/                 Chrome/Edge Manifest V3 插件
 support/api/twitter-timeline/               Node.js API、每日调度和 SQLite Store
-support/admin/twitter-timeline-admin/       黑白风格 Vue 管理台
+support/admin/twitter-timeline-admin/       绿色、白色主题 Vue 管理台
 tests/                                      调度、Store 和 API 集成测试
 ```
 
