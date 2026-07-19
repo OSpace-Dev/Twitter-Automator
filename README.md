@@ -4,7 +4,7 @@
 
 Twitter Automator is a local Twitter/X Timeline collection system composed of a Manifest V3 browser extension, a Node.js data service, SQLite storage, and a Vue operations console.
 
-The service persists target accounts, creates incremental jobs every day in Asia/Shanghai time, and dispatches them over SSE to a browser extension running in an authenticated X session. The console manages targets and schedules and shows each day's jobs and collected tweets.
+The service persists target accounts, creates incremental jobs every day in Asia/Shanghai time, and dispatches them over SSE to a browser extension running in an authenticated X session. The console uses separate routes for target and schedule management and for browsing historical jobs and collected tweets.
 
 ## Project Structure
 
@@ -73,7 +73,10 @@ Open another PowerShell terminal. Working directory: repository root.
 npm run admin:dev
 ```
 
-Open `http://127.0.0.1:17331`. Vite reloads the page when source files change.
+Open `http://127.0.0.1:17331`. Vite reloads the page when source files change. Each module also has a direct URL:
+
+- Targets: `http://127.0.0.1:17331/targets`
+- Data history: `http://127.0.0.1:17331/history`
 
 ### 5. Build and Preview the Console
 
@@ -96,11 +99,13 @@ The production build is written to `support/admin/twitter-timeline-admin/dist/`.
 
 ## Console Workflow
 
-1. Add a username, optional display name, and maximum tweet count under **Targets**.
-2. Use the switch to include or exclude the target from daily automation.
-3. Save the Asia/Shanghai trigger under **Daily Schedule**.
-4. Use the play button to run one target immediately.
-5. Filter **Daily History** by date and target, then open a job to read its saved tweets.
+Vue Router separates the console into two business modules instead of conditionally showing both inside one large page:
+
+1. Open **Targets** to add a username, optional display name, and maximum tweet count.
+2. Use the switch to include or exclude the target from daily automation, then save the Asia/Shanghai trigger under **Daily Schedule**.
+3. Use the play button to run one target immediately.
+4. Open **Data History** and filter jobs by date, account, status, or trigger source.
+5. Open a job's detail drawer to read its stored tweets while retaining links to the original posts on X.
 
 ## Local Configuration
 
