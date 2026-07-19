@@ -3,25 +3,40 @@ const { randomUUID } = require("node:crypto");
 const { URL } = require("node:url");
 const config = require("./config");
 const { createLogger } = require("./logger");
+const { DailyScheduler, getShanghaiDateKey } = require("./scheduler");
 const { TimelineStore } = require("./store");
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function createApp(options = {}) {
   const SSE_HEARTBEAT_INTERVAL_MS = 25000;
   const appConfig = {
     host: options.host || config.host,
-    port: options.port || config.port,
+    port: options.port ?? config.port,
     apiToken: options.apiToken || config.apiToken,
     extensionToken: options.extensionToken || config.extensionToken,
     databasePath: options.databasePath || config.databasePath,
-    dispatchTimeoutMs: options.dispatchTimeoutMs || 60000
+    dispatchTimeoutMs: options.dispatchTimeoutMs || 60000,
+    defaultScheduleTime: options.defaultScheduleTime || config.defaultScheduleTime,
+    adminOrigins: options.adminOrigins || config.adminOrigins
   };
-  const store = options.store || new TimelineStore(appConfig.databasePath);
+  const store = options.store || new TimelineStore(appConfig.databasePath, {
+    scheduleTime: appConfig.defaultScheduleTime
+  });
   const logger = options.logger || createLogger("twitter-timeline-api");
+  const now = options.now || (() => new Date());
   const clients = new Set();
   let activeJobId = null;
   let activeLeaseClientId = null;
   let dispatchTimeoutId = null;
   let shuttingDown = false;
+  const scheduler = options.scheduler || new DailyScheduler({
+    scheduleTime: store.getSettings().scheduleTime,
+    now,
+    async onDue(runDate, source) {
+      createScheduledJobs(runDate, source);
+    }
+  });
 
   logger.info("server_init", {
     host: appConfig.host,
@@ -35,6 +50,10 @@ function createApp(options = {}) {
     try {
       const requestUrl = new URL(request.url, `http://${request.headers.host || `${appConfig.host}:${appConfig.port}`}`);
       const pathname = requestUrl.pathname;
+      const isAdminRequest = pathname === "/health" || pathname.startsWith("/api/");
+      const corsAllowed = isAdminRequest
+        ? applyCors(request, response, appConfig.adminOrigins)
+        : true;
       logger.debug("request_start", {
         method: request.method,
         pathname,
@@ -43,7 +62,12 @@ function createApp(options = {}) {
 
       if (request.method === "OPTIONS") {
         logger.debug("request_options", { pathname });
-        return sendNoContent(response, 204);
+        return corsAllowed
+          ? sendNoContent(response, 204)
+          : sendJson(response, 403, { ok: false, error: "origin_not_allowed" });
+      }
+      if (!corsAllowed) {
+        return sendJson(response, 403, { ok: false, error: "origin_not_allowed" });
       }
 
       if (request.method === "GET" && pathname === "/health") {
@@ -54,7 +78,9 @@ function createApp(options = {}) {
         return sendJson(response, 200, {
           ok: true,
           activeJobId,
-          extensionClients: clients.size
+          extensionClients: clients.size,
+          schedule: scheduler.getState(),
+          settings: toPublicSettings(store.getSettings())
         });
       }
 
@@ -176,6 +202,123 @@ function createApp(options = {}) {
         return sendJson(response, 200, { ok: true, job });
       }
 
+      if (pathname.startsWith("/api/") && !isAuthorizedBearer(request, appConfig.apiToken)) {
+        logger.warn("api_request_unauthorized", { pathname });
+        return sendJson(response, 401, { ok: false, error: "unauthorized_api" });
+      }
+
+      if (request.method === "GET" && pathname === "/api/twitter-timeline/stats") {
+        return sendJson(response, 200, {
+          ok: true,
+          stats: store.getStats(getShanghaiDateKey(now())),
+          extensionClients: clients.size
+        });
+      }
+
+      if (request.method === "GET" && pathname === "/api/twitter-timeline/settings") {
+        return sendJson(response, 200, {
+          ok: true,
+          settings: toPublicSettings(store.getSettings()),
+          schedule: scheduler.getState()
+        });
+      }
+
+      if (request.method === "PUT" && pathname === "/api/twitter-timeline/settings") {
+        const payload = await readJsonBody(request);
+        if (!isScheduleTime(payload.scheduleTime)) {
+          return sendJson(response, 400, { ok: false, error: "invalid_schedule_time" });
+        }
+        const settings = store.updateSettings({ scheduleTime: payload.scheduleTime });
+        const schedule = scheduler.reschedule(settings.scheduleTime);
+        logger.info("schedule_settings_updated", {
+          scheduleTime: settings.scheduleTime,
+          nextRunAt: schedule.nextRunAt
+        });
+        return sendJson(response, 200, {
+          ok: true,
+          settings: toPublicSettings(settings),
+          schedule
+        });
+      }
+
+      if (request.method === "GET" && pathname === "/api/twitter-timeline/targets") {
+        return sendJson(response, 200, { ok: true, targets: store.listTargets() });
+      }
+
+      if (request.method === "POST" && pathname === "/api/twitter-timeline/targets") {
+        const payload = await readJsonBody(request);
+        const username = normalizeUsername(payload.username);
+        if (!username) {
+          return sendJson(response, 400, { ok: false, error: "username_required" });
+        }
+        if (store.getTargetByUsername(username)) {
+          return sendJson(response, 409, { ok: false, error: "target_username_exists" });
+        }
+        const target = store.createTarget({
+          targetId: randomUUID(),
+          username,
+          displayName: normalizeDisplayName(payload.displayName),
+          maxTweets: clampNumber(payload.maxTweets, 1, 500, 100),
+          enabled: payload.enabled === undefined ? true : Boolean(payload.enabled)
+        });
+        logger.info("target_created", { targetId: target.targetId, username: target.username });
+        return sendJson(response, 201, { ok: true, target });
+      }
+
+      const targetRunMatch = pathname.match(/^\/api\/twitter-timeline\/targets\/([^/]+)\/run$/);
+      if (request.method === "POST" && targetRunMatch) {
+        const targetId = decodeURIComponent(targetRunMatch[1]);
+        const target = store.getTarget(targetId);
+        if (!target) {
+          return sendJson(response, 404, { ok: false, error: "target_not_found" });
+        }
+        const job = createTargetJob(target, "manual", getShanghaiDateKey(now()));
+        logger.info("target_manual_job_created", {
+          targetId,
+          jobId: job.jobId,
+          username: job.username,
+          sinceTime: job.sinceTime
+        });
+        dispatchNextQueuedJob();
+        return sendJson(response, 201, { ok: true, job });
+      }
+
+      const targetMatch = pathname.match(/^\/api\/twitter-timeline\/targets\/([^/]+)$/);
+      if (request.method === "PUT" && targetMatch) {
+        const targetId = decodeURIComponent(targetMatch[1]);
+        const existing = store.getTarget(targetId);
+        if (!existing) {
+          return sendJson(response, 404, { ok: false, error: "target_not_found" });
+        }
+        const payload = await readJsonBody(request);
+        const username = payload.username === undefined
+          ? existing.username
+          : normalizeUsername(payload.username);
+        if (!username) {
+          return sendJson(response, 400, { ok: false, error: "username_required" });
+        }
+        const duplicate = store.getTargetByUsername(username);
+        if (duplicate && duplicate.targetId !== targetId) {
+          return sendJson(response, 409, { ok: false, error: "target_username_exists" });
+        }
+        const target = store.updateTarget(targetId, {
+          username,
+          displayName: payload.displayName === undefined
+            ? existing.displayName
+            : normalizeDisplayName(payload.displayName),
+          maxTweets: payload.maxTweets === undefined
+            ? existing.maxTweets
+            : clampNumber(payload.maxTweets, 1, 500, existing.maxTweets),
+          enabled: payload.enabled === undefined ? existing.enabled : Boolean(payload.enabled)
+        });
+        logger.info("target_updated", {
+          targetId,
+          username: target.username,
+          enabled: target.enabled
+        });
+        return sendJson(response, 200, { ok: true, target });
+      }
+
       if (pathname === "/api/twitter-timeline/jobs" && request.method === "POST") {
         if (!isAuthorizedBearer(request, appConfig.apiToken)) {
           logger.warn("api_create_job_unauthorized", { pathname });
@@ -220,7 +363,9 @@ function createApp(options = {}) {
           jobId: randomUUID(),
           username,
           sinceTime,
-          maxTweets: clampNumber(payload.maxTweets, 1, 500, 100)
+          maxTweets: clampNumber(payload.maxTweets, 1, 500, 100),
+          triggerType: "manual",
+          runDate: getShanghaiDateKey(now())
         });
         logger.info("api_job_created", {
           jobId: job.jobId,
@@ -238,9 +383,16 @@ function createApp(options = {}) {
           return sendJson(response, 401, { ok: false, error: "unauthorized_api" });
         }
 
+        const requestedDate = requestUrl.searchParams.get("date");
+        const runDate = normalizeDateKey(requestedDate);
+        if (requestedDate && !runDate) {
+          return sendJson(response, 400, { ok: false, error: "invalid_date" });
+        }
         const jobs = store.listJobs({
           username: normalizeUsername(requestUrl.searchParams.get("username")),
           status: normalizeStatus(requestUrl.searchParams.get("status")),
+          runDate,
+          triggerType: normalizeTriggerType(requestUrl.searchParams.get("triggerType")),
           limit: clampNumber(requestUrl.searchParams.get("limit"), 1, 500, 50)
         });
         logger.debug("api_list_jobs", {
@@ -314,6 +466,56 @@ function createApp(options = {}) {
       });
     }
   });
+
+  function createTargetJob(target, triggerType, runDate) {
+    const previousCompletedAt = store.getLastCompletedJobCreatedAt(target.username);
+    const sinceTime = previousCompletedAt
+      || new Date(now().getTime() - DAY_MS).toISOString();
+    return store.createJob({
+      jobId: randomUUID(),
+      targetId: target.targetId,
+      username: target.username,
+      sinceTime,
+      maxTweets: target.maxTweets,
+      triggerType,
+      runDate
+    });
+  }
+
+  function createScheduledJobs(runDate, source) {
+    const targets = store.listTargets({ enabledOnly: true });
+    let createdCount = 0;
+    for (const target of targets) {
+      const existingJobs = store.listJobs({
+        username: target.username,
+        runDate,
+        triggerType: "scheduled",
+        limit: 1
+      });
+      if (existingJobs.some((job) => job.targetId === target.targetId)) {
+        continue;
+      }
+      const previousCompletedAt = store.getLastCompletedJobCreatedAt(target.username);
+      const sinceTime = previousCompletedAt
+        || new Date(now().getTime() - DAY_MS).toISOString();
+      store.ensureScheduledJob({
+        jobId: randomUUID(),
+        targetId: target.targetId,
+        username: target.username,
+        sinceTime,
+        maxTweets: target.maxTweets,
+        runDate
+      });
+      createdCount += 1;
+    }
+    logger.info("scheduled_jobs_ready", {
+      runDate,
+      source,
+      enabledTargets: targets.length,
+      createdJobs: createdCount
+    });
+    dispatchNextQueuedJob();
+  }
 
   function handleExtensionEvents(request, response) {
     response.writeHead(200, {
@@ -514,8 +716,9 @@ function createApp(options = {}) {
     config: appConfig,
     store,
     server,
-    listen() {
-      return new Promise((resolve) => {
+    scheduler,
+    async listen() {
+      await new Promise((resolve) => {
         server.listen(appConfig.port, appConfig.host, () => {
           logger.info("server_listening", {
             host: appConfig.host,
@@ -524,10 +727,13 @@ function createApp(options = {}) {
           resolve();
         });
       });
+      await scheduler.start();
+      return server.address();
     },
     close() {
       return new Promise((resolve, reject) => {
         shuttingDown = true;
+        scheduler.stop();
         logger.info("server_shutdown_start", {
           activeClients: clients.size,
           activeJobId
@@ -650,16 +856,54 @@ function normalizeStatus(value) {
     : null;
 }
 
+function normalizeDateKey(value) {
+  const normalized = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeTriggerType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["manual", "scheduled"].includes(normalized) ? normalized : null;
+}
+
+function normalizeDisplayName(value) {
+  const normalized = String(value || "").trim();
+  return normalized ? normalized.slice(0, 100) : null;
+}
+
+function isScheduleTime(value) {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+}
+
+function toPublicSettings(settings) {
+  return {
+    scheduleTime: settings.scheduleTime,
+    timeZone: "Asia/Shanghai"
+  };
+}
+
 function isTerminalStatus(status) {
   return status === "completed" || status === "failed";
 }
 
 function createCorsHeaders() {
   return {
-    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS"
   };
+}
+
+function applyCors(request, response, allowedOrigins = []) {
+  const origin = request.headers.origin;
+  if (!origin) {
+    return true;
+  }
+  if (!allowedOrigins.includes(origin)) {
+    return false;
+  }
+  response.setHeader("Access-Control-Allow-Origin", origin);
+  response.setHeader("Vary", "Origin");
+  return true;
 }
 
 if (require.main === module) {

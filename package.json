@@ -1,0 +1,18 @@
+{
+  "name": "twitter-automator",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Scheduled Twitter/X timeline collection through a browser extension and local SQLite service.",
+  "scripts": {
+    "start": "node support/api/twitter-timeline/server.js",
+    "start:debug": "node --inspect=127.0.0.1:9228 support/api/twitter-timeline/server.js",
+    "test": "node --test",
+    "check": "node --check support/api/twitter-timeline/server.js && node --check support/api/twitter-timeline/store.js && node --check support/api/twitter-timeline/scheduler.js && node --check plugins/timeline-collector/background.js && node --check plugins/timeline-collector/content-script.js",
+    "admin:dev": "npm --prefix support/admin/twitter-timeline-admin run dev",
+    "admin:build": "npm --prefix support/admin/twitter-timeline-admin run build",
+    "admin:preview": "npm --prefix support/admin/twitter-timeline-admin run preview"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
